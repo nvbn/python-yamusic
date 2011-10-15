@@ -7,34 +7,34 @@ Library depends on PySide(Qt for python), but it use only QtScript, if anyone fi
 Usage
 -----
 
-Import search app:
+Import search app::
 >>> from yamusic.app import Search
 
-Now you need to init Qt application:
+Now you need to init Qt application::
 >>> from PySide.QtCore import QCoreApplication
 >>> import sys
 >>> app = QCoreApplication(sys.argv)
 
-Init cursor (is singleton, because data depends on cookies):
+Init cursor (is singleton, because data depends on cookies)::
 >>> cursor = Search.cursor()
 
-Cursor can search artists:
+Cursor can search artists::
 >>> cursor.search(Search.TYPE_ARTISTS, 'query')
 
-Albums:
+Albums::
 >>> cursor.search(Search.TYPE_ALBUMS, 'query')
 
-And tracks:
+And tracks::
 >>> cursor.search(Search.TYPE_TRACKS, 'query')
 
-If single=True, search return one item:
+If single=True, search return one item::
 >>> cursor.search(Search.TYPE_TRACKS, 'query', single=True)
 
 Else - return iterator.
-For getting data from albums and artists use:
+For getting data from albums and artists use::
 >>> artist.get_albums()
 >>> artist.get_tracks()
 >>> album.get_tracks()
 
-For opening track like file use:
+For opening track like file use::
 >>> track.open()
