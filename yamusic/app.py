@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 #    This program is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU Lesser General Public License as published by
-#    the Free Software Foundation.
+#    it under the terms of the GNU Lesser General Public License
+#    as published by the Free Software Foundation.
 #
 #    This program is distributed in the hope that it will be useful,
 #    but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -11,9 +11,9 @@
 #    You should have received a copy of the GNU General Public License
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
 from BeautifulSoup import BeautifulSoup, BeautifulStoneSoup
-import urllib2, cookielib
+import urllib2
+import cookielib
 from itertools import imap, islice
 from PySide.QtScript import QScriptEngine, QScriptProgram
 from yamusic.hack import JS
@@ -34,6 +34,7 @@ class Cached(object):
         if result.id:
             getattr(Search, cls.CACHE)[id] = result
         return result
+
 
 class Track(Cached):
     """Track item"""
@@ -72,7 +73,9 @@ class Track(Cached):
         cursor = Search.cursor()
         if not self.storage_dir:
             raise AttributeError('Storage dir required!')
-        info_path_data = cursor.open('http://storage.music.yandex.ru/get/%s/2.xml' % self.storage_dir).read()
+        info_path_data = cursor.open(
+            'http://storage.music.yandex.ru/get/%s/2.xml' % self.storage_dir
+        ).read()
         info_path_soup = BeautifulStoneSoup(info_path_data)
         file_path_data = cursor.open(
             'http://storage.music.yandex.ru/download-info/e9363ad5.384199/%s' % (
@@ -80,7 +83,7 @@ class Track(Cached):
             )
         ).read()
         file_path_soup = BeautifulStoneSoup(file_path_data).find('download-info')
-        path =file_path_soup.find('path').text
+        path = file_path_soup.find('path').text
         return 'http://%s/get-mp3/%s/%s%s?track-id=%d&region=225&from=service-search' % (
             file_path_soup.find('host').text,
             cursor.get_key(path[1:] + file_path_soup.find('s').text),
@@ -147,7 +150,6 @@ class Album(Cached):
             ))
         return self._tracks
 
-
     def __unicode__(self):
         return u'%s - %s' % (self.artist, self.title)
 
@@ -194,6 +196,7 @@ class Artist(Cached):
             tracks += album.get_tracks()
         self._tracks = tracks
         return self._tracks
+
 
 class Search(object):
     """Main search class"""
@@ -258,7 +261,7 @@ class Search(object):
 
     def _get_tracks(self, soup):
         for track in soup.findAll('div', self._class_filter('b-track')):
-            track = json.loads(track['onclick'][7:])#remove return
+            track = json.loads(track['onclick'][7:])  # remove return
             yield Track.get(
                 id=track['id'],
                 title=track['title'],
@@ -304,7 +307,7 @@ class Search(object):
         elif type == self.TYPE_ARTISTS:
             return self._get_artists(soup)
 
-    def _get_result(self, type, text):#start from 0!
+    def _get_result(self, type, text):  # start from 0!
         pages_count = 1
         current_page = 0
         while pages_count > current_page:
