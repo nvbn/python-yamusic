@@ -8,15 +8,12 @@ Usage
 -----
 
 Import search app::
- >>> from yamusic.app import Search
+ >>> from yamusic.app import cursor
 
 Now you need to init Qt application::
  >>> from PySide.QtCore import QCoreApplication
  >>> import sys
  >>> app = QCoreApplication(sys.argv)
-
-Init cursor (is singleton, because data depends on cookies)::
- >>> cursor = Search.cursor()
 
 Cursor can search artists::
  >>> cursor.search(Search.TYPE_ARTISTS, 'query')
