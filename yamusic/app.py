@@ -78,7 +78,8 @@ class Track(Cached):
         ).read()
         info_path_soup = BeautifulStoneSoup(info_path_data)
         file_path_data = cursor.open(
-            'http://storage.music.yandex.ru/download-info/e9363ad5.384199/%s' % (
+            'http://storage.music.yandex.ru/download-info/%s/%s' % (
+                self.storage_dir,
                 info_path_soup.find('track')['filename'],
             )
         ).read()
