@@ -312,12 +312,12 @@ class Search(object):
             soup = BeautifulSoup(result)
             try:
                 try:
-                    pages_count = int(soup.findAll('a', self._class_filter('b-pager__page'))[-1].text)#start form 1!
-                except UnicodeEncodeError:#fix work with ... page
-                    pages_count = int(soup.findAll('a', self._class_filter('b-pager__page'))[-2].text)#start form 1!
-                current_page = int(soup.find('b', self._class_filter('b-pager__current')).text)#start from 1!
+                    pages_count = int(soup.findAll('a', self._class_filter('b-pager__page'))[-1].text)  # start form 1!
+                except UnicodeEncodeError:  # fix work with ... page
+                    pages_count = int(soup.findAll('a', self._class_filter('b-pager__page'))[-2].text)  # start form 1!
+                current_page = int(soup.find('b', self._class_filter('b-pager__current')).text)  # start from 1!
             except IndexError:
-                current_page += 1#if only one page
+                current_page += 1  # if only one page
             for obj in self._get(type, soup):
                 yield obj
 
