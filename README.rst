@@ -8,7 +8,7 @@ Usage
 -----
 
 Import search app::
- >>> from yamusic.app import cursor
+ >>> from yamusic.app import Search, cursor
 
 Now you need to init Qt application::
  >>> from PySide.QtCore import QCoreApplication
