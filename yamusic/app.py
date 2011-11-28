@@ -231,13 +231,6 @@ class Search(object):
         if not self.OPENER:
             self.OPENER = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.COOKIE_JAR))
 
-    @classmethod
-    def cursor(cls):
-        """Create cursor singleton"""
-        if not cls.__instance:
-            cls.__instance = cls()
-        return cls.__instance
-
     def open(self, url):
         """Open with cookies"""
         return self.OPENER.open(url)
@@ -336,3 +329,5 @@ class Search(object):
             return next(islice(result, 0, None))
         else:
             return result
+
+cursor = Search()
