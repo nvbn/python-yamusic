@@ -70,7 +70,6 @@ class Track(Cached):
     @property
     def url(self):
         """Calculate track url"""
-        cursor = Search.cursor()
         if not self.storage_dir:
             raise AttributeError('Storage dir required!')
         info_path_data = cursor.open(
@@ -95,7 +94,7 @@ class Track(Cached):
 
     def open(self):
         """Open track like urlopen"""
-        return Search.open(self.url)
+        return cursor.open(self.url)
 
 
 class Album(Cached):
@@ -136,7 +135,6 @@ class Album(Cached):
         if hasattr(self, '_tracks'):
             return self._tracks
         self._tracks = []
-        cursor = Search.cursor()
         data = cursor.open('http://music.yandex.ru/fragment/album/%d' % int(self.id)).read()
         soup = BeautifulSoup(data)
         for track in soup.findAll('div', cursor._class_filter('b-track')):
@@ -170,7 +168,6 @@ class Artist(Cached):
         """Lazy get artist albums"""
         if hasattr(self, '_albums'):
             return self._albums
-        cursor = Search.cursor()
         self._albums = []
         data = cursor.open('http://music.yandex.ru/fragment/artist/%d/tracks' % int(self.id)).read()
         soup = BeautifulSoup(data)
@@ -223,14 +220,18 @@ class Search(object):
     __instance = None
 
     def __init__(self):
-        if not self.ENGINE:
-            self.ENGINE = QScriptEngine()
         if not self.DATA:
             self.DATA = JS
         if not self.COOKIE_JAR:
             self.COOKIE_JAR = cookielib.CookieJar()
         if not self.OPENER:
             self.OPENER = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.COOKIE_JAR))
+
+    @property
+    def engine(self):
+        if not self.ENGINE:
+            self.ENGINE = QScriptEngine()
+        return self.ENGINE
 
     def open(self, url):
         """Open with cookies"""
@@ -239,7 +240,7 @@ class Search(object):
     def get_key(self, key):
         """Get secret key for track loading"""
         base = QScriptProgram('var s="%s"; ' % (key,) + self.DATA)
-        p = self.ENGINE.evaluate(base)
+        p = self.engine.evaluate(base)
         return p.toString()
 
     def _class_filter(self, cls_name):
