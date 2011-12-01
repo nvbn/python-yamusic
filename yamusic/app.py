@@ -20,6 +20,25 @@ from yamusic.hack import JS
 import json
 import re
 
+TYPE_TRACKS = 0
+TYPE_ALBUMS = 1
+TYPE_ARTISTS = 2
+
+class Manager(object):
+
+    def __init__(self, _type):
+        self.type = _type
+
+    def filter(self, title=None, storage_dir=None, id=None):  # TODO: work like django
+        if not title:
+            raise NotImplemented
+        return cursor.search(self.type, title)
+
+    def get(self, title, storage_dir=None, id=None):
+        if not title:
+            raise NotImplemented
+        return cursor.search(self.type, title, single=True)
+
 
 class Cached(object):
     """Simple cache for avoiding duplicates"""
@@ -35,10 +54,20 @@ class Cached(object):
             getattr(Search, cls.CACHE)[id] = result
         return result
 
+    def __unicode__(self):
+        return ''
+
+    def __repr__(self):
+        return '<%s: %s>' % (
+            self.__class__.__name__,
+            self.__unicode__()
+        )
+
 
 class Track(Cached):
     """Track item"""
     CACHE = "TRACKS_CACHE"
+    objects = Manager(TYPE_TRACKS)
 
     def __init__(self, id=None, title=None, artist_id=None,
                  artist_title=None, album_id=None, album_title=None,
@@ -100,6 +129,7 @@ class Track(Cached):
 class Album(Cached):
     """Album item"""
     CACHE = 'ALBUMS_CACHE'
+    objects = Manager(TYPE_ALBUMS)
 
     def __init__(self, id=None, title=None, cover=None,
                  artist_id=None, artist_title=None,
@@ -156,6 +186,7 @@ class Album(Cached):
 class Artist(Cached):
     """Artist item"""
     CACHE = 'ARTISTS_CACHE'
+    objects = Manager(TYPE_ARTISTS)
 
     def __init__(self, id=None, title=None):
         self.id = id
@@ -175,15 +206,16 @@ class Artist(Cached):
             try:
                 album_data = json.loads(album['onclick'][7:].replace("'", '"'))
                 album = Album.get(
-                    id=album_data['id'],
-                    title=album_data['title'],
+                    id=album_data.get('id'),
+                    title=album_data.get('title'),
                     artist=self,
-                    cover=album_data['cover']
+                    cover=album_data.get('cover')
                 )
                 self._albums.append(album)
-                album.set_tracks(album_data['tracks'])
+                album.set_tracks(album_data.get('tracks'))
             except ValueError:
                 pass
+        return self._albums
 
     def get_tracks(self):
         """Lazy get artist tracks"""
@@ -198,9 +230,9 @@ class Artist(Cached):
 
 class Search(object):
     """Main search class"""
-    TYPE_TRACKS = 0
-    TYPE_ALBUMS = 1
-    TYPE_ARTISTS = 2
+    TYPE_TRACKS = TYPE_TRACKS
+    TYPE_ALBUMS = TYPE_ALBUMS
+    TYPE_ARTISTS = TYPE_ARTISTS
     TYPES = {
         TYPE_TRACKS: 'tracks',
         TYPE_ALBUMS: 'albums',
@@ -210,36 +242,40 @@ class Search(object):
     TRACKS_CACHE = {}
     ALBUMS_CACHE = {}
     ARTISTS_CACHE = {}
-    DATA = None
-    ENGINE = None
-    OPENER = None
-    COOKIE_JAR = None
-    LOGIN = None
-    PASSWORD = None
-    AUTHENTICATED = False
-    __instance = None
+    _data = None
 
     def __init__(self):
-        if not self.DATA:
-            self.DATA = JS
-        if not self.COOKIE_JAR:
-            self.COOKIE_JAR = cookielib.CookieJar()
-        if not self.OPENER:
-            self.OPENER = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.COOKIE_JAR))
+        self._engine = self._opener = self._cookie_jar = None
+        self.authenticated = False
+        self._data = JS
 
     @property
     def engine(self):
-        if not self.ENGINE:
-            self.ENGINE = QScriptEngine()
-        return self.ENGINE
+        if not self._engine:
+            self._engine = QScriptEngine()
+        return self._engine
+
+    @property
+    def cookie_jar(self):
+        if not self._cookie_jar:
+            self._cookie_jar = cookielib.CookieJar()
+        return self._cookie_jar
+
+    @property
+    def opener(self):
+        if not self._opener:
+            self._opener = urllib2.build_opener(
+                urllib2.HTTPCookieProcessor(self.cookie_jar)
+            )
+        return self._opener
 
     def open(self, url):
         """Open with cookies"""
-        return self.OPENER.open(url)
+        return self.opener.open(url)
 
     def get_key(self, key):
         """Get secret key for track loading"""
-        base = QScriptProgram('var s="%s"; ' % (key,) + self.DATA)
+        base = QScriptProgram('var s="%s"; ' % (key,) + self._data)
         p = self.engine.evaluate(base)
         return p.toString()
 
@@ -328,7 +364,7 @@ class Search(object):
             raise AttributeError('Wrong type')
         result = self._get_result(type, text)
         if single:
-            return next(islice(result, 0, None))
+            return list(islice(result, 1))[0]
         else:
             return result
 
