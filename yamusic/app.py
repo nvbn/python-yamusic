@@ -15,8 +15,7 @@ from BeautifulSoup import BeautifulSoup, BeautifulStoneSoup
 import urllib2
 import cookielib
 from itertools import imap, islice
-from PySide.QtScript import QScriptEngine, QScriptProgram
-from yamusic.hack import JS
+from hashlib import md5
 import json
 import re
 
@@ -242,18 +241,10 @@ class Search(object):
     TRACKS_CACHE = {}
     ALBUMS_CACHE = {}
     ARTISTS_CACHE = {}
-    _data = None
 
     def __init__(self):
-        self._engine = self._opener = self._cookie_jar = None
+        self._opener = self._cookie_jar = None
         self.authenticated = False
-        self._data = JS
-
-    @property
-    def engine(self):
-        if not self._engine:
-            self._engine = QScriptEngine()
-        return self._engine
 
     @property
     def cookie_jar(self):
@@ -275,9 +266,7 @@ class Search(object):
 
     def get_key(self, key):
         """Get secret key for track loading"""
-        base = QScriptProgram('var s="%s"; ' % (key,) + self._data)
-        p = self.engine.evaluate(base)
-        return p.toString()
+        return md5('XGRlBW9FXlekgbPrRHuSiA' + key.replace('\r\n', '\n')).hexdigest()
 
     def _class_filter(self, cls_name):
         """Create BeautifulSoup class filter"""
