@@ -17,7 +17,6 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from yamusic.app import cursor, Search
 from itertools import islice
-from PySide.QtCore import QCoreApplication
 
 
 class CursorTestCase(unittest.TestCase):
@@ -99,5 +98,4 @@ class CursorTestCase(unittest.TestCase):
             )
 
 if __name__ == '__main__':
-    app = QCoreApplication(sys.argv)
     unittest.main()

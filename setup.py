@@ -3,11 +3,6 @@ import sys, os
 
 version = '63'
 
-try:
-    import PySide
-    requireds = []
-except ImportError:
-    requireds = ['PySide']
 
 setup(name='python-yamusic',
       version=version,
@@ -15,7 +10,7 @@ setup(name='python-yamusic',
       long_description="""\
 """,
       classifiers=[], # Get strings from http://pypi.python.org/pypi?%3Aaction=list_classifiers
-      keywords='yandex music js',
+      keywords='yandex music',
       author='Vladimir Yakovlev',
       author_email='nvbn.rm@gmail.com',
       url='http://github.com/nvbn/python-yamusic',
