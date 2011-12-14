@@ -15,7 +15,7 @@ import unittest
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from yamusic.app import cursor, Search
+from yamusic.app import cursor, Search, Artist, Album, Track
 from itertools import islice
 
 
@@ -96,6 +96,84 @@ class CursorTestCase(unittest.TestCase):
                 len(track.open().read(200)), 200,
                 'Track downloading not work!'
             )
+
+
+class ORMTestCase(unittest.TestCase):
+    def setUp(self):
+        self.artists = (
+            'notfoundableartist',
+            'royksopp', 'liars', 'portishead'
+        )
+        self.not_fount_artist = self.artists[0]
+        self.albums = (
+            'notofoundableshitalbum',
+            'junior', 'jade motel',
+        )
+        self.not_found_album = self.albums[0]
+        self.tracks = (
+            'song 2', 'paranoid android', 'castle'
+        )
+
+    def test_artist(self):
+        for artist in self.artists:
+            artist_list = Artist.objects.filter(title=artist).all()[0:1]
+            if artist == self.not_fount_artist:
+                self.assertEqual(
+                    len(artist_list), 0,
+                    'Not found not work!'
+                )
+            else:
+                self.assertEqual(
+                    len(artist_list), 1,
+                    'Search artist not work!'
+                )
+                artist_obj = artist_list[0]
+                albums = list(artist_obj.get_albums())
+                self.assertEqual(
+                    len(albums) > 0, True,
+                    'get_album not work!'
+                )
+                for album in albums:
+                    tracks = list(album.get_tracks())
+                    self.assertEqual(
+                        len(tracks) > 0, True,
+                        'get_tracks from album not work!'
+                    )
+        self.assertEqual(Artist.objects.get(id=24463).title, 'Archive')
+
+    def test_albums(self):
+        for album in self.albums:
+            album_list = Album.objects.filter(title=album).all()[0:1]
+            if album == self.not_found_album:
+                self.assertEqual(
+                    len(album_list), 0,
+                    'Not found not work!'
+                )
+            else:
+                self.assertEqual(
+                    len(album_list), 1,
+                    'Search album not work!'
+                )
+                album_obj = album_list[0]
+                tracks = list(album_obj.get_tracks())
+                self.assertEqual(
+                    len(tracks) > 0, True,
+                    'get_tracks from album not work!'
+                )
+        self.assertEqual(Album.objects.get(id=298323).title, 'The Less You Know, The Better')
+
+    def test_tracks(self):
+        for track in self.tracks:
+            track = Track.objects.get(title=track)
+            self.assertEqual(
+                len(track.title) > 0, True,
+                'Track search not work!'
+            )
+            self.assertEqual(
+                len(track.open().read(200)), 200,
+                'Track downloading not work!'
+            )
+        self.assertEqual(Track.objects.get(id=1675302, album__id=166649).title, 'Karen')
 
 if __name__ == '__main__':
     unittest.main()

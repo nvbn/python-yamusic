@@ -23,21 +23,6 @@ TYPE_TRACKS = 0
 TYPE_ALBUMS = 1
 TYPE_ARTISTS = 2
 
-class Manager(object):
-
-    def __init__(self, _type):
-        self.type = _type
-
-    def filter(self, title=None, storage_dir=None, id=None):  # TODO: work like django
-        if not title:
-            raise NotImplemented
-        return cursor.search(self.type, title)
-
-    def get(self, title, storage_dir=None, id=None):
-        if not title:
-            raise NotImplemented
-        return cursor.search(self.type, title, single=True)
-
 
 class Cached(object):
     """Simple cache for avoiding duplicates"""
@@ -63,27 +48,291 @@ class Cached(object):
         )
 
 
+class Manager(object):
+
+    def __init__(self, search_cls, _type, filter_fnc=None):
+        self.search_cls = search_cls
+        self.type = _type
+        self._filter_fnc = filter_fnc
+
+    @property
+    def filter_result(self):
+        if not self._filter_fnc:
+            raise ValueError
+        if not hasattr(self, '_filter_result'):
+            self._filter_result = self._filter_fnc()
+        return self._filter_result
+
+    def _get_titles(self, *args, **kwargs):
+        """Get title for search
+
+        Keyword Arguments:
+        *args -- classes for search
+        **kwargs -- search fields
+
+        Returns: str
+        """
+        titles = []
+        for cls, cls_name in map(
+            lambda arg: (arg, arg.__name__.lower()), args
+        ):
+            cls_dict = dict(filter(
+                lambda (name, val):
+                val and cls_name in name, kwargs.items()
+            ))
+            title = cls_dict.get(cls_name + '__title', '')
+            id = cls_dict.get(cls_name + '__id', None)
+            obj = cls_dict.get(cls_name)
+            if not title:
+                if id and not obj:
+                    obj = cls.objects.get(id=id)
+                if obj:
+                    title = obj.title
+            titles.append(title)
+        return ' '.join(titles)
+
+    def _search(self, single, title='', **kwargs):
+        titles = self._get_titles(*self.search_cls, **kwargs)
+        if title:
+            titles = ' '.join([titles, title])
+        return cursor.search(self.type, titles, single=single)
+
+    def all(self):
+        return list(self.filter_result)
+
+    def filter(self, title='', **kwargs):
+        return Manager(
+            self.search_cls,
+            self.type,
+            lambda: self._search(False, title, **kwargs)
+        )
+
+    def get(self, title='', **kwargs):
+        if 'id' in kwargs:
+            raise ValueError
+        return self._search(True, title, **kwargs)
+
+    def __getitem__(self, item):
+        if type(item) is slice:
+            return list(islice(
+                self.filter_result, item.start, item.stop, item.step
+            ))
+        else:
+            return list(islice(self.filter_result, item, item + 1))[0]
+
+    def __iter__(self):
+        return self.filter_result
+
+    def __len__(self):
+        return len(self.all())
+
+
+class ArtistManager(Manager):
+
+    def __init__(self):
+        super(ArtistManager, self).__init__([], TYPE_ARTISTS)
+
+    def get(self, id=None, **kwargs):
+        if id:
+            artist = Artist(id=id)
+            artist.get_data()
+            return artist
+        else:
+            return super(ArtistManager, self).get(**kwargs)
+
+
+class Artist(Cached):
+    """Artist item"""
+    CACHE = 'ARTISTS_CACHE'
+    objects = ArtistManager()
+
+    def __init__(self, id=None, title=None):
+        self.id = id
+        self.title = title
+
+    def __unicode__(self):
+        return self.title
+
+    def get_albums(self):
+        """Lazy get artist albums"""
+        if not hasattr(self, '_albums'):
+            self.get_data()
+        return self._albums
+
+    def get_data(self):
+        self._albums = []
+        data = cursor.open(
+            'http://music.yandex.ru/fragment/artist/%d/tracks' %
+            int(self.id)
+        ).read()
+        soup = BeautifulSoup(data)
+        self.title = cursor._remove_html(
+            soup.find(
+                'h1', cursor._class_filter('b-title__title')
+            ).__unicode__()
+        )
+        for album in soup.findAll(
+            'div', cursor._class_filter('b-album-control')
+        ):
+            try:
+                album_data = json.loads(album['onclick'][7:].replace("'", '"'))
+                album = Album.get(
+                    id=album_data.get('id'),
+                    title=album_data.get('title'),
+                    artist=self,
+                    cover=album_data.get('cover')
+                )
+                self._albums.append(album)
+                album.set_tracks(album_data.get('tracks'))
+            except ValueError:
+                pass
+
+    def get_tracks(self):
+        """Lazy get artist tracks"""
+        if hasattr(self, '_tracks'):
+            return self._tracks
+        tracks = []
+        for album in self.get_albums():
+            tracks += album.get_tracks()
+        self._tracks = tracks
+        return self._tracks
+
+
+class AlbumManager(Manager):
+
+    def __init__(self):
+        super(AlbumManager, self).__init__([Artist], TYPE_ALBUMS)
+
+    def get(self, id=None, **kwargs):
+        if id:
+            album = Album(id=id)
+            album.get_data()
+            return album
+        else:
+            return super(AlbumManager, self).get(**kwargs)
+
+
+class Album(Cached):
+    """Album item"""
+    CACHE = 'ALBUMS_CACHE'
+    objects = AlbumManager()
+
+    def __init__(self, id=None, title=None, cover=None,
+                 artist__id=None, artist__title=None,
+                 artist=None):
+        self.id = id
+        self.title = title
+        self.cover = cover
+        if artist__id or artist__title:
+            self.artist = Artist.get(
+                id=artist__id,
+                title=artist__title,
+            )
+        if artist:
+            self.artist = artist
+
+    def set_tracks(self, tracks):
+        """Set tracks to album"""
+        self._tracks = []
+        for track in tracks:
+            self._tracks.append(
+                Track.get(
+                    id=track['id'],
+                    title=track['title'],
+                    artist=self.artist,
+                    album=self,
+                    duration=track['duration'],
+                    storage_dir=track['storage_dir'],
+                )
+            )
+
+    def get_tracks(self):
+        """Lazy get album tracks"""
+        if not hasattr(self, '_tracks'):
+            self.get_data()
+        return self._tracks
+
+    def get_data(self):
+        data = cursor.open(
+            'http://music.yandex.ru/fragment/album/%d' %
+            int(self.id)
+        ).read()
+        soup = BeautifulSoup(data)
+        self._tracks = []
+        artist_soup = soup.find(
+            'div', cursor._class_filter('b-title__artist')
+        ).find('a')
+        self.artist__id = artist_soup['href'].split('/')[-1]
+        self.artist__title = cursor._remove_html(artist_soup.__unicode__())
+        self.artist = Artist.get(
+            id=self.artist__id,
+            title=self.artist__title,
+        )
+        for track in soup.findAll('div', cursor._class_filter('b-track')):
+            track_data = json.loads(track['onclick'][7:])
+            self._tracks.append(Track.get(
+                id=track_data['id'],
+                title=track_data['title'],
+                artist=self.artist,
+                album=self,
+                storage_dir=track_data['storage_dir'],
+                duration=track_data['duration']
+            ))
+        self.title = cursor._remove_html(
+            soup.find(
+                'h1', cursor._class_filter('b-title__title')
+            ).__unicode__()
+        )
+
+    def __unicode__(self):
+        return u'%s - %s' % (self.artist, self.title)
+
+
+class TrackManager(Manager):
+
+    def __init__(self):
+        super(TrackManager, self).__init__((Artist, Album), TYPE_TRACKS)
+
+    def get(self, id=None, storage_dir=None, **kwargs):
+        album = kwargs.get('album', None)
+        album__id = kwargs.get('album__id', None)
+        album__title = kwargs.get('album__title', None)
+        if not album:
+            if album__id:
+                album = Album.objects.get(id=album__id)
+            elif album__title:
+                album = Album.objects.get(title=album__title)
+        if id and storage_dir:
+            return Track(id, storage_dir, **kwargs)
+        elif id and album:
+            track = Track(id=id, album=album)
+            track.get_data()
+            return track
+        else:
+            return super(TrackManager, self).get(**kwargs)
+
+
 class Track(Cached):
     """Track item"""
     CACHE = "TRACKS_CACHE"
-    objects = Manager(TYPE_TRACKS)
+    objects = TrackManager()
 
-    def __init__(self, id=None, title=None, artist_id=None,
-                 artist_title=None, album_id=None, album_title=None,
-                 album_cover=None, duration=None, storage_dir=None,
+    def __init__(self, id=None, title=None, artist__id=None,
+                 artist__title=None, album__id=None, album__title=None,
+                 album__cover=None, duration=None, storage_dir=None,
                  artist=None, album=None):
         self.id = int(id)
         self.title = title
-        if artist_id or artist_title:
+        if artist__id or artist__title:
             self.artist = Artist.get(
-                id=artist_id,
-                title=artist_title,
+                id=artist__id,
+                title=artist__title,
             )
-        if album_id or album_title or album_cover:
+        if album__id or album__title or album__cover:
             self.album = Album.get(
-                id=album_id,
-                title=album_title,
-                cover=album_cover,
+                id=album__id,
+                title=album__title,
+                cover=album__cover,
             )
         self.duration = duration
         self.storage_dir = storage_dir
@@ -117,114 +366,26 @@ class Track(Cached):
             cursor.get_key(path[1:] + file_path_soup.find('s').text),
             file_path_soup.find('ts').text,
             path,
-            self.id,
+            int(self.id),
         )
+
+    def get_data(self):
+        self.artist = self.album.artist
+        soup = BeautifulSoup(
+            cursor.open(
+                'http://music.yandex.ru/fragment/track/%d/album/%d' % (
+                    self.id,
+                    self.album.id,
+                )
+            ).read()
+        )
+        data = soup.find('div', cursor._class_filter('b-track b-track_type_track js-track'))
+        for attr, val in cursor._parse_track(data).items():
+            setattr(self, attr, val)
 
     def open(self):
         """Open track like urlopen"""
         return cursor.open(self.url)
-
-
-class Album(Cached):
-    """Album item"""
-    CACHE = 'ALBUMS_CACHE'
-    objects = Manager(TYPE_ALBUMS)
-
-    def __init__(self, id=None, title=None, cover=None,
-                 artist_id=None, artist_title=None,
-                 artist=None):
-        self.id = id
-        self.title = title
-        self.cover = cover
-        if artist_id or artist_title:
-            self.artist = Artist.get(
-                id=artist_id,
-                title=artist_title,
-            )
-        if artist:
-            self.artist = artist
-
-    def set_tracks(self, tracks):
-        """Set tracks to album"""
-        self._tracks = []
-        for track in tracks:
-            self._tracks.append(
-                Track.get(
-                    id=track['id'],
-                    title=track['title'],
-                    artist=self.artist,
-                    album=self,
-                    duration=track['duration'],
-                    storage_dir=track['storage_dir'],
-                )
-            )
-
-    def get_tracks(self):
-        """Lazy get album tracks"""
-        if hasattr(self, '_tracks'):
-            return self._tracks
-        self._tracks = []
-        data = cursor.open('http://music.yandex.ru/fragment/album/%d' % int(self.id)).read()
-        soup = BeautifulSoup(data)
-        for track in soup.findAll('div', cursor._class_filter('b-track')):
-            track_data = json.loads(track['onclick'][7:])
-            self._tracks.append(Track.get(
-                id=track_data['id'],
-                title=track_data['title'],
-                artist=self.artist,
-                album=self,
-                storage_dir=track_data['storage_dir'],
-                duration=track_data['duration']
-            ))
-        return self._tracks
-
-    def __unicode__(self):
-        return u'%s - %s' % (self.artist, self.title)
-
-
-class Artist(Cached):
-    """Artist item"""
-    CACHE = 'ARTISTS_CACHE'
-    objects = Manager(TYPE_ARTISTS)
-
-    def __init__(self, id=None, title=None):
-        self.id = id
-        self.title = title
-
-    def __unicode__(self):
-        return self.title
-
-    def get_albums(self):
-        """Lazy get artist albums"""
-        if hasattr(self, '_albums'):
-            return self._albums
-        self._albums = []
-        data = cursor.open('http://music.yandex.ru/fragment/artist/%d/tracks' % int(self.id)).read()
-        soup = BeautifulSoup(data)
-        for album in soup.findAll('div', cursor._class_filter('b-album-control')):
-            try:
-                album_data = json.loads(album['onclick'][7:].replace("'", '"'))
-                album = Album.get(
-                    id=album_data.get('id'),
-                    title=album_data.get('title'),
-                    artist=self,
-                    cover=album_data.get('cover')
-                )
-                self._albums.append(album)
-                album.set_tracks(album_data.get('tracks'))
-            except ValueError:
-                pass
-        return self._albums
-
-    def get_tracks(self):
-        """Lazy get artist tracks"""
-        if hasattr(self, '_tracks'):
-            return self._tracks
-        tracks = []
-        for album in self.get_albums():
-            tracks += album.get_tracks()
-        self._tracks = tracks
-        return self._tracks
 
 
 class Search(object):
@@ -279,19 +440,22 @@ class Search(object):
         except TypeError:
             return data
 
+    def _parse_track(self, data):
+        track = json.loads(data['onclick'][7:])
+        return {
+            'id': track['id'],
+            'title': track['title'],
+            'artist__id': track['artist_id'],
+            'artist__title': track['artist'],
+            'album__id': track['album_id'],
+            'album__title': track['album'],
+            'album__cover': track['cover'],
+            'storage_dir': track['storage_dir']
+        }
+
     def _get_tracks(self, soup):
         for track in soup.findAll('div', self._class_filter('b-track')):
-            track = json.loads(track['onclick'][7:])  # remove return
-            yield Track.get(
-                id=track['id'],
-                title=track['title'],
-                artist_id=track['artist_id'],
-                artist_title=track['artist'],
-                album_id=track['album_id'],
-                album_title=track['album'],
-                album_cover=track['cover'],
-                storage_dir=track['storage_dir']
-            )
+            yield Track.get(**self._parse_track(track))
 
     def _get_albums(self, soup):
         for album in soup.findAll('div', self._class_filter('b-albums')):
@@ -305,8 +469,8 @@ class Search(object):
                     self._class_filter('b-link_class_albums-title-link')
                 ).__unicode__()),
                 cover=cover_a.find('img')['src'],
-                artist_id=artist_a['href'].split('/')[-1],
-                artist_title=self._remove_html(artist_a.__unicode__())
+                artist__id=artist_a['href'].split('/')[-1],
+                artist__title=self._remove_html(artist_a.__unicode__())
             )
 
     def _get_artists(self, soup):
