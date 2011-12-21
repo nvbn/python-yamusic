@@ -24,6 +24,15 @@ TYPE_ALBUMS = 1
 TYPE_ARTISTS = 2
 
 
+def fix_json_single_quotes(text):
+    def replace_quotes(match):
+        if match.group(1)[0] == "'":
+            return '"%s"'%(match.group(2).replace(r"\'","'").replace('"',r'\"'))
+        else:
+            return '"%s"'%(match.group(2))
+
+    return re.sub(r"""(["'])((?:\\?.)*?)\1""", replace_quotes, text);
+
 class Cached(object):
     """Simple cache for avoiding duplicates"""
     CACHE = ''
@@ -175,7 +184,7 @@ class Artist(Cached):
             'div', cursor._class_filter('b-album-control')
         ):
             try:
-                album_data = json.loads(album['onclick'][7:].replace("'", '"'))
+                album_data = json.loads(fix_json_single_quotes(album['onclick'][7:]))
                 album = Album.get(
                     id=album_data.get('id'),
                     title=album_data.get('title'),
